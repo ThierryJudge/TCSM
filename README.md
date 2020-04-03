@@ -3,7 +3,7 @@
 Pytorch implementation of TCSM <br/>
 
 ## Paper
-[Transformation Consistent Self-ensembling Model for Semi-supervised Medical Image Segmentation](https://arxiv.org/abs/1911.01376)
+[Transformation Consistent Self-ensembling Model for Semi-supervised Medical Image Segmentation](https://arxiv.org/pdf/1903.00348.pdf)
 <br/>
 <p align="center">
   <img src="figure/framework.png">
@@ -22,15 +22,15 @@ cd TCSM
 * Put the data under `./data/`
 
 ## Train
-* cd `messidor_scripts` and specify the pretrain model in `train_fold.sh`
-* Run `sh train_fold.sh` to start the training process
+* cd `scripts_skin` 
+* Run `sh train_50tcsm.sh` to start the training process
 
 ## Evaluate
-* Specify the model path in `eval_fold.sh`
-* Run `sh eval_fold.sh` to start the evaluation.
+* Specify the model path in `eval.sh`
+* Run `sh eval.sh` to start the evaluation.
 
 ## Acknowledgement
-CBAM module is reused from the [Pytorch implementation of CBAM](https://github.com/Jongchan/attention-module).
+Some code is reused from the [Pytorch implementation of mean teacher](https://github.com/CuriousAI/mean-teacher). 
 
 ## Note
 * Contact: Xiaomeng Li (xmengli999@gmail.com)
