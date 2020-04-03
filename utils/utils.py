@@ -121,7 +121,7 @@ def post_process_evaluate_pre(x, target):
     return sum(JA_sum), sum(AC_sum), sum(DI_sum), sum(SE_sum), sum(SP_sum)
 
 
-def multi_validate(valloader, model, criterion, epoch, use_cuda, mode):
+def multi_validate(valloader, model, criterion, epoch, use_cuda, args):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = []

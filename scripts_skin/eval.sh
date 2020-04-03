@@ -1,0 +1,2 @@
+cd ..
+python train_baseline.py --gpu 0  --n-labeled 50 --out exp/skin/skin50  --batch-size 20  --num-class 2  --lr 3e-4  --val-iteration 10  --epochs 100 --evaluate --resume exp/skin/skin50_xvbn/model_best.pth.tar

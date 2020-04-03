@@ -42,6 +42,8 @@ parser.add_argument('--n-labeled', type=int, default=250,
                     help='Number of labeled data')
 parser.add_argument('--val-iteration', type=int, default=1024,
                     help='Number of labeled data')
+parser.add_argument('--data', default='',
+                    help='input data path')
 parser.add_argument('--out', default='result',
                     help='Directory to output the result')
 parser.add_argument('--alpha', default=0.75, type=float)
@@ -106,7 +108,7 @@ def main():
 
     if not os.path.isdir(args.out):
         mkdir_p(args.out)
-    copyfile("train_mean.py", args.out+"/train_mean.py")
+    copyfile("train_tcsm_mean.py", args.out+"/train_tcsm_mean.py")
 
 
     if args.retina:
@@ -128,7 +130,7 @@ def main():
 
     if args.retina:
         import dataset.retina as dataset
-        train_labeled_set, train_unlabeled_set, val_set = dataset.get_skinlesion_dataset("/home/xmli/medical/REFUGE/",
+        train_labeled_set, train_unlabeled_set, val_set = dataset.get_skinlesion_dataset("./data/REFUGE/",
                                                     num_labels=args.n_labeled,
                                                     transform_train=transform_train,
                                                     transform_val=transform_val,
@@ -136,14 +138,14 @@ def main():
     else:
         if args.test_mode:
             import dataset.skinlesion_test as dataset
-            train_labeled_set, train_unlabeled_set, val_set = dataset.get_skinlesion_dataset("/home/xmli/medical/skinlesion/",
+            train_labeled_set, train_unlabeled_set, val_set = dataset.get_skinlesion_dataset("./data/skinlesion/",
                                                         num_labels=args.n_labeled,
                                                         transform_train=transform_train,
                                                         transform_val=transform_val,
                                                          transform_forsemi=None)
         else:
             import dataset.skinlesion as dataset
-            train_labeled_set, train_unlabeled_set, val_set, test_set = dataset.get_skinlesion_dataset("/home/xmli/medical/skinlesion/",
+            train_labeled_set, train_unlabeled_set, val_set, test_set = dataset.get_skinlesion_dataset("./data/skinlesion/",
                                                         num_labels=args.n_labeled,
                                                         transform_train=transform_train,
                                                         transform_val=transform_val,
@@ -163,7 +165,7 @@ def main():
 
 
     # Model
-    print("==> creating WRN-28-2")
+    print("==> creating model")
 
     def create_model(ema=False):
         model = models.DenseUnet_2d()
@@ -208,14 +210,14 @@ def main():
         print (", ".join("%.4f" % f for f in val_result))
         return
 
-    writer = SummaryWriter()
+    writer = SummaryWriter("runs/" + str(args.out.split("/")[-1]))
     writer.add_text('Text', str(args))
 
     for epoch in range(start_epoch, args.epochs):
         # test
         if (epoch) % 50 == 0:
-            val_loss, val_result = multi_validate(val_loader, model, criterion, epoch, use_cuda, mode='Valid Stats')
-            test_loss, val_ema_result = multi_validate(val_loader, ema_model, criterion, epoch, use_cuda, mode='Test Stats ')
+            val_loss, val_result = multi_validate(val_loader, model, criterion, epoch, use_cuda, args)
+            test_loss, val_ema_result = multi_validate(val_loader, ema_model, criterion, epoch, use_cuda, args)
 
             step =  args.val_iteration * (epoch)
 
@@ -223,15 +225,21 @@ def main():
             writer.add_scalar('Val/ema_loss', test_loss, step)
 
             writer.add_scalar('Model/JA', val_result[0], step)
+            writer.add_scalar('Model/AC', val_result[1], step)
             writer.add_scalar('Model/DI', val_result[2], step)
+            writer.add_scalar('Model/SE', val_result[3], step)
+            writer.add_scalar('Model/SP', val_result[4], step)
+
 
             writer.add_scalar('Ema_model/JA', val_ema_result[0], step)
+            writer.add_scalar('Ema_model/AC', val_ema_result[1], step)
             writer.add_scalar('Ema_model/DI', val_ema_result[2], step)
+            writer.add_scalar('Ema_model/SE', val_ema_result[3], step)
+            writer.add_scalar('Ema_model/SP', val_ema_result[4], step)
             # scheduler.step()
 
             # save model
             big_result = max(val_result[0], val_ema_result[0])
-
             is_best = big_result > best_acc
             best_acc = max(big_result, best_acc)
             save_checkpoint({
@@ -242,9 +250,8 @@ def main():
                 'best_acc': best_acc,
                 'optimizer': optimizer.state_dict(),
             }, is_best)
-        # test_accs.append(test_result[0])
-        # train
 
+        # train
         train_meanteacher(labeled_trainloader, unlabeled_trainloader, model, ema_model, optimizer,
                           criterion, epoch, writer)
 
@@ -254,7 +261,6 @@ def main():
         #         param_group['lr'] = lr
         lr = args.lr
         writer.add_scalar('lr', lr, (epoch) * args.val_iteration)
-    # logger.close()
     writer.close()
 
     print('Best acc:')
@@ -271,12 +277,10 @@ def train_meanteacher(labeled_trainloader, unlabeled_trainloader, model, ema_mod
         consistency_criterion = losses.softmax_kl_loss
     else:
         assert False, args.consistency_type
-    residual_logit_criterion = losses.symmetric_mse_loss
 
     # switch to train mode
     model.train()
     ema_model.train()
-
 
     for batch_idx in range(args.val_iteration):
         try:
@@ -294,7 +298,6 @@ def train_meanteacher(labeled_trainloader, unlabeled_trainloader, model, ema_mod
                 inputs_u, inputs_u2 = unlabeled_train_iter.next()
 
             if use_cuda:
-
                 # targets_x[targets_x == 255] = 1
                 inputs_u = inputs_u.cuda()
                 inputs_u2 = inputs_u2.cuda()
@@ -312,7 +315,7 @@ def train_meanteacher(labeled_trainloader, unlabeled_trainloader, model, ema_mod
                 inputs_u2_noise, rot_mask, flip_mask = transforms_for_rot(inputs_u2_noise)
 
                 #  add scale
-                # inputs_u2_noise, scale_mask = transforms_for_scale(inputs_u2_noise, 224)
+                inputs_u2_noise, scale_mask = transforms_for_scale(inputs_u2_noise, 224)
                 # add scale
                 if args.scale:
                     inputs_u2_noise, scale_mask = transforms_for_scale(inputs_u2_noise, 224)
@@ -335,8 +338,6 @@ def train_meanteacher(labeled_trainloader, unlabeled_trainloader, model, ema_mod
                     outputs_u = model(inputs_u)
                     outputs_u2 = model(inputs_u2_noise)
                     outputs_u_ema = ema_model(inputs_u2_noise)
-
-
                     outputs_u2 = transforms_back_rot(outputs_u2, rot_mask, flip_mask)
                 else:
                     outputs_u = model(inputs_u)
